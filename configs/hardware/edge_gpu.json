@@ -1,0 +1,19 @@
+{
+  "name": "edge_gpu",
+  "peak_flops": 5000000000000.0,
+  "memory_bandwidth": 200000000000.0,
+  "launch_overhead_us": 10.0,
+  "warp_size": 32,
+  "max_warps_per_sm": 48,
+  "max_threads_per_block": 512,
+  "max_threads_per_sm": 1536,
+  "max_blocks_per_sm": 12,
+  "registers_per_thread_limit": 128,
+  "registers_per_sm": 32768,
+  "shared_mem_per_block": 32768,
+  "shared_mem_per_sm": 49152,
+  "icache_inst_limit": 512,
+  "reg_soft_ratio": 0.45,
+  "smem_soft_ratio": 0.50,
+  "supported_threads": [64, 128, 256, 512]
+}

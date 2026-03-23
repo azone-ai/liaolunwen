@@ -1,0 +1,19 @@
+{
+  "name": "generic_gpu",
+  "peak_flops": 19000000000000.0,
+  "memory_bandwidth": 750000000000.0,
+  "launch_overhead_us": 8.0,
+  "warp_size": 32,
+  "max_warps_per_sm": 64,
+  "max_threads_per_block": 1024,
+  "max_threads_per_sm": 2048,
+  "max_blocks_per_sm": 16,
+  "registers_per_thread_limit": 255,
+  "registers_per_sm": 65536,
+  "shared_mem_per_block": 49152,
+  "shared_mem_per_sm": 65536,
+  "icache_inst_limit": 700,
+  "reg_soft_ratio": 0.50,
+  "smem_soft_ratio": 0.55,
+  "supported_threads": [64, 128, 256, 512, 1024]
+}

@@ -1,0 +1,63 @@
+{
+  "name": "transformer_ffn",
+  "inputs": [
+    {"name": "x", "shape": [1024, 768], "dtype": "float16"}
+  ],
+  "outputs": ["add_residual"],
+  "nodes": [
+    {
+      "name": "layer_norm",
+      "op": "layer_norm",
+      "inputs": ["x"],
+      "output_shape": [1024, 768],
+      "dtype": "float16",
+      "attrs": {"channels": 768, "input_shape": [1024, 768]}
+    },
+    {
+      "name": "gemm1",
+      "op": "gemm",
+      "inputs": ["layer_norm"],
+      "output_shape": [1024, 3072],
+      "dtype": "float16",
+      "attrs": {"m": 1024, "n": 3072, "k": 768}
+    },
+    {
+      "name": "bias1",
+      "op": "bias_add",
+      "inputs": ["gemm1"],
+      "output_shape": [1024, 3072],
+      "dtype": "float16",
+      "attrs": {"channels": 3072}
+    },
+    {
+      "name": "gelu1",
+      "op": "gelu",
+      "inputs": ["bias1"],
+      "output_shape": [1024, 3072],
+      "dtype": "float16"
+    },
+    {
+      "name": "gemm2",
+      "op": "gemm",
+      "inputs": ["gelu1"],
+      "output_shape": [1024, 768],
+      "dtype": "float16",
+      "attrs": {"m": 1024, "n": 768, "k": 3072}
+    },
+    {
+      "name": "bias2",
+      "op": "bias_add",
+      "inputs": ["gemm2"],
+      "output_shape": [1024, 768],
+      "dtype": "float16",
+      "attrs": {"channels": 768}
+    },
+    {
+      "name": "add_residual",
+      "op": "add",
+      "inputs": ["bias2", "x"],
+      "output_shape": [1024, 768],
+      "dtype": "float16"
+    }
+  ]
+}

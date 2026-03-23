@@ -1,0 +1,62 @@
+{
+  "name": "residual_block",
+  "inputs": [
+    {"name": "x", "shape": [1, 64, 56, 56], "dtype": "float16"}
+  ],
+  "outputs": ["relu2"],
+  "nodes": [
+    {
+      "name": "conv1",
+      "op": "conv2d",
+      "inputs": ["x"],
+      "output_shape": [1, 64, 56, 56],
+      "dtype": "float16",
+      "attrs": {"in_channels": 64, "out_channels": 64, "kernel": [3, 3], "groups": 1}
+    },
+    {
+      "name": "bn1",
+      "op": "batch_norm",
+      "inputs": ["conv1"],
+      "output_shape": [1, 64, 56, 56],
+      "dtype": "float16",
+      "attrs": {"channels": 64}
+    },
+    {
+      "name": "relu1",
+      "op": "relu",
+      "inputs": ["bn1"],
+      "output_shape": [1, 64, 56, 56],
+      "dtype": "float16"
+    },
+    {
+      "name": "conv2",
+      "op": "conv2d",
+      "inputs": ["relu1"],
+      "output_shape": [1, 64, 56, 56],
+      "dtype": "float16",
+      "attrs": {"in_channels": 64, "out_channels": 64, "kernel": [3, 3], "groups": 1}
+    },
+    {
+      "name": "bn2",
+      "op": "batch_norm",
+      "inputs": ["conv2"],
+      "output_shape": [1, 64, 56, 56],
+      "dtype": "float16",
+      "attrs": {"channels": 64}
+    },
+    {
+      "name": "add_skip",
+      "op": "add",
+      "inputs": ["bn2", "x"],
+      "output_shape": [1, 64, 56, 56],
+      "dtype": "float16"
+    },
+    {
+      "name": "relu2",
+      "op": "relu",
+      "inputs": ["add_skip"],
+      "output_shape": [1, 64, 56, 56],
+      "dtype": "float16"
+    }
+  ]
+}

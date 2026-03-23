@@ -1,0 +1,55 @@
+{
+  "name": "mobilenet_bottleneck",
+  "inputs": [
+    {"name": "x", "shape": [1, 32, 112, 112], "dtype": "float16"}
+  ],
+  "outputs": ["relu2"],
+  "nodes": [
+    {
+      "name": "dw_conv",
+      "op": "depthwise_conv2d",
+      "inputs": ["x"],
+      "output_shape": [1, 32, 112, 112],
+      "dtype": "float16",
+      "attrs": {"in_channels": 32, "out_channels": 32, "kernel": [3, 3], "groups": 32}
+    },
+    {
+      "name": "bn1",
+      "op": "batch_norm",
+      "inputs": ["dw_conv"],
+      "output_shape": [1, 32, 112, 112],
+      "dtype": "float16",
+      "attrs": {"channels": 32}
+    },
+    {
+      "name": "relu1",
+      "op": "relu",
+      "inputs": ["bn1"],
+      "output_shape": [1, 32, 112, 112],
+      "dtype": "float16"
+    },
+    {
+      "name": "pw_conv",
+      "op": "conv2d",
+      "inputs": ["relu1"],
+      "output_shape": [1, 64, 112, 112],
+      "dtype": "float16",
+      "attrs": {"in_channels": 32, "out_channels": 64, "kernel": [1, 1], "groups": 1}
+    },
+    {
+      "name": "bn2",
+      "op": "batch_norm",
+      "inputs": ["pw_conv"],
+      "output_shape": [1, 64, 112, 112],
+      "dtype": "float16",
+      "attrs": {"channels": 64}
+    },
+    {
+      "name": "relu2",
+      "op": "relu",
+      "inputs": ["bn2"],
+      "output_shape": [1, 64, 112, 112],
+      "dtype": "float16"
+    }
+  ]
+}
