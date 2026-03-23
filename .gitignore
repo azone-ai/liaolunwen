@@ -1,6 +1,37 @@
-﻿__pycache__/
+# Python bytecode and caches
+__pycache__/
 *.py[cod]
-outputs/
+*.pyo
 .pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage/
+htmlcov/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Experiment outputs and temporary files
+outputs/
+tmp/
+temp/
+*.tmp
+*.log
+
+# IDE and editor files
 .idea/
+.vscode/
+
+# Local vendored dependencies and generated assets
 .vendor/
+
+# Notebook checkpoints
+.ipynb_checkpoints/
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
