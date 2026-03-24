@@ -14,11 +14,20 @@ class PlanBlock:
     layer_end: int
     nodes: list[str]
     cost_ms: float
+    roofline_latency_ms: float
+    penalty_multiplier: float
     dominant_pattern: str
+    flops: float
+    memory_bytes: int
     occupancy: float
     registers_per_thread: int
     shared_mem_bytes: int
     threads_per_block: int
+    instruction_count: int
+    external_input_bytes: int
+    external_output_bytes: int
+    weight_bytes: int
+    eliminated_internal_bytes: int
     fusion_hints: list[str]
 
     @classmethod
@@ -35,11 +44,20 @@ class PlanBlock:
             layer_end=layer_end,
             nodes=evaluation.nodes,
             cost_ms=evaluation.total_latency_ms,
+            roofline_latency_ms=evaluation.roofline_latency_ms,
+            penalty_multiplier=evaluation.penalty_multiplier,
             dominant_pattern=evaluation.dominant_pattern,
+            flops=evaluation.flops,
+            memory_bytes=evaluation.memory_bytes,
             occupancy=evaluation.occupancy,
             registers_per_thread=evaluation.registers_per_thread,
             shared_mem_bytes=evaluation.shared_mem_bytes,
             threads_per_block=evaluation.threads_per_block,
+            instruction_count=evaluation.instruction_count,
+            external_input_bytes=evaluation.external_input_bytes,
+            external_output_bytes=evaluation.external_output_bytes,
+            weight_bytes=evaluation.weight_bytes,
+            eliminated_internal_bytes=evaluation.eliminated_internal_bytes,
             fusion_hints=evaluation.fusion_hints,
         )
 
@@ -50,11 +68,20 @@ class PlanBlock:
             "layer_end": self.layer_end,
             "nodes": self.nodes,
             "cost_ms": self.cost_ms,
+            "roofline_latency_ms": self.roofline_latency_ms,
+            "penalty_multiplier": self.penalty_multiplier,
             "dominant_pattern": self.dominant_pattern,
+            "flops": self.flops,
+            "memory_bytes": self.memory_bytes,
             "occupancy": self.occupancy,
             "registers_per_thread": self.registers_per_thread,
             "shared_mem_bytes": self.shared_mem_bytes,
             "threads_per_block": self.threads_per_block,
+            "instruction_count": self.instruction_count,
+            "external_input_bytes": self.external_input_bytes,
+            "external_output_bytes": self.external_output_bytes,
+            "weight_bytes": self.weight_bytes,
+            "eliminated_internal_bytes": self.eliminated_internal_bytes,
             "fusion_hints": self.fusion_hints,
         }
 
@@ -78,6 +105,16 @@ class PlanResult:
     kernel_count: int
     intervals: list[tuple[int, int]]
     blocks: list[PlanBlock]
+    total_nodes: int
+    average_ops_per_kernel: float
+    total_flops: float
+    total_memory_bytes: int
+    total_external_input_bytes: int
+    total_external_output_bytes: int
+    total_weight_bytes: int
+    total_eliminated_internal_bytes: int
+    avg_occupancy: float
+    avg_penalty_multiplier: float
     feasible: bool = True
 
     def to_dict(self) -> dict:
@@ -89,6 +126,16 @@ class PlanResult:
             "kernel_count": self.kernel_count,
             "intervals": self.intervals,
             "blocks": [block.to_dict() for block in self.blocks],
+            "total_nodes": self.total_nodes,
+            "average_ops_per_kernel": self.average_ops_per_kernel,
+            "total_flops": self.total_flops,
+            "total_memory_bytes": self.total_memory_bytes,
+            "total_external_input_bytes": self.total_external_input_bytes,
+            "total_external_output_bytes": self.total_external_output_bytes,
+            "total_weight_bytes": self.total_weight_bytes,
+            "total_eliminated_internal_bytes": self.total_eliminated_internal_bytes,
+            "avg_occupancy": self.avg_occupancy,
+            "avg_penalty_multiplier": self.avg_penalty_multiplier,
             "feasible": self.feasible,
         }
 
@@ -155,6 +202,26 @@ def build_plan_result(
                 )
                 total_latency += evaluation.total_latency_ms
                 block_id += 1
+
+    total_nodes = sum(len(block.nodes) for block in blocks)
+    average_ops_per_kernel = total_nodes / len(blocks) if blocks else 0.0
+    total_flops = sum(block.flops for block in blocks)
+    total_memory_bytes = sum(block.memory_bytes for block in blocks)
+    total_external_input_bytes = sum(block.external_input_bytes for block in blocks)
+    total_external_output_bytes = sum(block.external_output_bytes for block in blocks)
+    total_weight_bytes = sum(block.weight_bytes for block in blocks)
+    total_eliminated_internal_bytes = sum(block.eliminated_internal_bytes for block in blocks)
+
+    if total_latency > 0:
+        avg_occupancy = sum(block.occupancy * block.cost_ms for block in blocks) / total_latency
+        avg_penalty_multiplier = sum(block.penalty_multiplier * block.cost_ms for block in blocks) / total_latency
+    elif blocks:
+        avg_occupancy = sum(block.occupancy for block in blocks) / len(blocks)
+        avg_penalty_multiplier = sum(block.penalty_multiplier for block in blocks) / len(blocks)
+    else:
+        avg_occupancy = 0.0
+        avg_penalty_multiplier = 0.0
+
     return PlanResult(
         method=method,
         graph_name=graph.name,
@@ -163,6 +230,16 @@ def build_plan_result(
         kernel_count=len(blocks),
         intervals=intervals,
         blocks=blocks,
+        total_nodes=total_nodes,
+        average_ops_per_kernel=average_ops_per_kernel,
+        total_flops=total_flops,
+        total_memory_bytes=total_memory_bytes,
+        total_external_input_bytes=total_external_input_bytes,
+        total_external_output_bytes=total_external_output_bytes,
+        total_weight_bytes=total_weight_bytes,
+        total_eliminated_internal_bytes=total_eliminated_internal_bytes,
+        avg_occupancy=avg_occupancy,
+        avg_penalty_multiplier=avg_penalty_multiplier,
         feasible=feasible,
     )
 
@@ -266,6 +343,16 @@ def optimize_layers_dp(
             kernel_count=0,
             intervals=[],
             blocks=[],
+            total_nodes=0,
+            average_ops_per_kernel=0.0,
+            total_flops=0.0,
+            total_memory_bytes=0,
+            total_external_input_bytes=0,
+            total_external_output_bytes=0,
+            total_weight_bytes=0,
+            total_eliminated_internal_bytes=0,
+            avg_occupancy=0.0,
+            avg_penalty_multiplier=0.0,
             feasible=False,
         )
 

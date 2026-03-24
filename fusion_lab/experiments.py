@@ -73,6 +73,8 @@ def write_reports(results: list[PlanResult], out_dir: str | Path, with_plots: bo
     summary_rows = []
     baseline = next((item for item in results if item.method == "none"), None)
     baseline_latency = baseline.estimated_latency_ms if baseline and baseline.feasible else None
+    baseline_kernels = baseline.kernel_count if baseline and baseline.feasible else None
+    baseline_memory = baseline.total_memory_bytes if baseline and baseline.feasible else None
 
     for result in results:
         plan_path = output_dir / f"{result.method}_plan.json"
@@ -83,6 +85,14 @@ def write_reports(results: list[PlanResult], out_dir: str | Path, with_plots: bo
         if baseline_latency and result.feasible and result.estimated_latency_ms > 0:
             speedup = baseline_latency / result.estimated_latency_ms
 
+        kernel_reduction = None
+        if baseline_kernels and baseline_kernels > 0 and result.feasible:
+            kernel_reduction = 1.0 - (result.kernel_count / baseline_kernels)
+
+        memory_reduction = None
+        if baseline_memory and baseline_memory > 0 and result.feasible:
+            memory_reduction = 1.0 - (result.total_memory_bytes / baseline_memory)
+
         summary_rows.append(
             {
                 "method": result.method,
@@ -92,6 +102,18 @@ def write_reports(results: list[PlanResult], out_dir: str | Path, with_plots: bo
                 "estimated_latency_ms": result.estimated_latency_ms,
                 "kernel_count": result.kernel_count,
                 "speedup_vs_none": speedup,
+                "kernel_reduction_vs_none": kernel_reduction,
+                "average_ops_per_kernel": result.average_ops_per_kernel,
+                "total_nodes": result.total_nodes,
+                "total_flops": result.total_flops,
+                "total_memory_bytes": result.total_memory_bytes,
+                "total_external_input_bytes": result.total_external_input_bytes,
+                "total_external_output_bytes": result.total_external_output_bytes,
+                "total_weight_bytes": result.total_weight_bytes,
+                "total_eliminated_internal_bytes": result.total_eliminated_internal_bytes,
+                "memory_reduction_vs_none": memory_reduction,
+                "avg_occupancy": result.avg_occupancy,
+                "avg_penalty_multiplier": result.avg_penalty_multiplier,
             }
         )
 
@@ -106,21 +128,38 @@ def write_reports(results: list[PlanResult], out_dir: str | Path, with_plots: bo
     markdown_lines = [
         f"# {results[0].graph_name} on {results[0].hardware_name}",
         "",
-        "| Method | Feasible | Latency (ms) | Kernels | Speedup vs None |",
-        "| --- | --- | ---: | ---: | ---: |",
+        "| Method | Feasible | Latency (ms) | Speedup | Kernels | Kernel Red. | Memory (MiB) | Saved Internal (MiB) | Avg Occ. |",
+        "| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
     ]
     for row in summary_rows:
         speedup = "-" if row["speedup_vs_none"] is None else f"{row['speedup_vs_none']:.3f}"
+        kernel_reduction = "-" if row["kernel_reduction_vs_none"] is None else f"{row['kernel_reduction_vs_none'] * 100:.1f}%"
         latency = "inf" if row["estimated_latency_ms"] == float("inf") else f"{row['estimated_latency_ms']:.4f}"
+        memory_mib = _bytes_to_mib(row["total_memory_bytes"])
+        saved_mib = _bytes_to_mib(row["total_eliminated_internal_bytes"])
         markdown_lines.append(
-            f"| {row['method']} | {row['feasible']} | {latency} | {row['kernel_count']} | {speedup} |"
+            f"| {row['method']} | {row['feasible']} | {latency} | {speedup} | {row['kernel_count']} | {kernel_reduction} | {memory_mib:.3f} | {saved_mib:.3f} | {row['avg_occupancy']:.3f} |"
         )
-    markdown_lines.append("")
+
+    markdown_lines.extend(
+        [
+            "",
+            "## Notes",
+            "",
+            "- `Memory (MiB)` is the estimated external traffic used by the cost model: inputs + outputs + weights.",
+            "- `Saved Internal (MiB)` is the estimated intermediate output traffic eliminated by fusion.",
+            "- `Kernel Red.` is measured against the `none` baseline.",
+        ]
+    )
     with open(output_dir / "summary.md", "w", encoding="utf-8") as handle:
         handle.write("\n".join(markdown_lines))
 
     if with_plots:
         _write_plot(summary_rows, output_dir)
+
+
+def _bytes_to_mib(value: int | float) -> float:
+    return float(value) / (1024.0 * 1024.0)
 
 
 def _write_plot(summary_rows: list[dict], output_dir: Path) -> None:

@@ -23,16 +23,6 @@ def _soft_violation(ratio: float) -> float:
     return max(0.0, ratio - 1.0) ** 2
 
 
-def _rounded_supported_threads(candidate: int, supported: tuple[int, ...], limit: int) -> int:
-    legal = [value for value in supported if value <= limit]
-    if not legal:
-        return min(candidate, limit)
-    floor_choices = [value for value in legal if value <= candidate]
-    if floor_choices:
-        return max(floor_choices)
-    return min(legal)
-
-
 @dataclass
 class GroupEvaluation:
     nodes: list[str]
@@ -128,13 +118,8 @@ class CostModel:
             )
 
         preferred_threads = [estimate_preferred_threads(graph.nodes[name]) for name in ordered_nodes]
-        chosen_threads = _rounded_supported_threads(
-            min(preferred_threads),
-            self.hardware.supported_threads,
-            self.hardware.max_threads_per_block,
-        )
-
-        flops = sum(estimate_flops(graph.nodes[name]) for name in ordered_nodes)
+        node_work_weights = [max(estimate_flops(graph.nodes[name]), 1.0) for name in ordered_nodes]
+        flops = sum(node_work_weights)
         weight_bytes = sum(estimate_weight_bytes(graph.nodes[name]) for name in ordered_nodes)
         instruction_count = sum(estimate_instruction_count(graph.nodes[name]) for name in ordered_nodes)
 
@@ -151,11 +136,81 @@ class CostModel:
 
         internal_only_outputs = set(ordered_nodes) - set(external_outputs)
         eliminated_internal_bytes = sum(graph.nodes[name].output_bytes for name in internal_only_outputs)
-
-        shared_mem_bytes = self._estimate_peak_live_tile_bytes(graph, ordered_nodes, chosen_threads)
         memory_bytes = external_input_bytes + external_output_bytes + weight_bytes
 
+        candidate_threads = [
+            threads
+            for threads in self.hardware.supported_threads
+            if threads <= self.hardware.max_threads_per_block
+        ]
+        if not candidate_threads:
+            candidate_threads = [min(min(preferred_threads), self.hardware.max_threads_per_block)]
+
+        evaluations = [
+            self._evaluate_candidate(
+                graph=graph,
+                ordered_nodes=ordered_nodes,
+                dominant_pattern=dominant.value,
+                preferred_threads=preferred_threads,
+                node_work_weights=node_work_weights,
+                chosen_threads=chosen_threads,
+                flops=flops,
+                memory_bytes=memory_bytes,
+                registers_per_thread=registers_per_thread,
+                instruction_count=instruction_count,
+                external_input_bytes=external_input_bytes,
+                external_output_bytes=external_output_bytes,
+                weight_bytes=weight_bytes,
+                eliminated_internal_bytes=eliminated_internal_bytes,
+                fusion_hints=hints,
+            )
+            for chosen_threads in candidate_threads
+        ]
+
+        feasible_evaluations = [evaluation for evaluation in evaluations if evaluation.feasible]
+        if feasible_evaluations:
+            return min(feasible_evaluations, key=lambda item: item.total_latency_ms)
+
+        best_failed = min(
+            evaluations,
+            key=lambda item: (
+                len(item.reasons),
+                item.shared_mem_bytes if item.shared_mem_bytes > 0 else float("inf"),
+                item.threads_per_block if item.threads_per_block > 0 else float("inf"),
+            ),
+        )
+        merged_reasons: list[str] = []
+        seen_reasons: set[str] = set()
+        for evaluation in evaluations:
+            for reason in evaluation.reasons:
+                if reason not in seen_reasons:
+                    seen_reasons.add(reason)
+                    merged_reasons.append(reason)
+        best_failed.reasons = merged_reasons or best_failed.reasons
+        return best_failed
+
+    def _evaluate_candidate(
+        self,
+        graph: GraphModel,
+        ordered_nodes: list[str],
+        dominant_pattern: str,
+        preferred_threads: list[int],
+        node_work_weights: list[float],
+        chosen_threads: int,
+        flops: float,
+        memory_bytes: int,
+        registers_per_thread: int,
+        instruction_count: int,
+        external_input_bytes: int,
+        external_output_bytes: int,
+        weight_bytes: int,
+        eliminated_internal_bytes: int,
+        fusion_hints: list[str],
+    ) -> GroupEvaluation:
+        reasons: list[str] = []
+        shared_mem_bytes = self._estimate_peak_live_tile_bytes(graph, ordered_nodes, chosen_threads)
         group_regs_per_block = registers_per_thread * chosen_threads
+
         if registers_per_thread > self.hardware.registers_per_thread_limit:
             reasons.append("registers per thread exceed hard limit")
         if group_regs_per_block > self.hardware.registers_per_sm:
@@ -187,7 +242,7 @@ class CostModel:
         if reasons:
             return GroupEvaluation(
                 nodes=ordered_nodes,
-                dominant_pattern=dominant.value,
+                dominant_pattern=dominant_pattern,
                 feasible=False,
                 total_latency_ms=float("inf"),
                 roofline_latency_ms=float("inf"),
@@ -203,12 +258,12 @@ class CostModel:
                 external_output_bytes=external_output_bytes,
                 weight_bytes=weight_bytes,
                 eliminated_internal_bytes=eliminated_internal_bytes,
-                fusion_hints=hints,
+                fusion_hints=list(fusion_hints),
                 reasons=reasons,
             )
 
-        compute_eff = self.hardware.base_compute_efficiency[dominant.value] * max(occupancy, 0.25)
-        memory_eff = self.hardware.base_memory_efficiency[dominant.value] * (0.5 + 0.5 * occupancy)
+        compute_eff = self.hardware.base_compute_efficiency[dominant_pattern] * max(occupancy, 0.25)
+        memory_eff = self.hardware.base_memory_efficiency[dominant_pattern] * (0.5 + 0.5 * occupancy)
         roofline_s = max(
             flops / max(self.hardware.peak_flops * compute_eff, 1e-9),
             memory_bytes / max(self.hardware.memory_bandwidth * memory_eff, 1e-9),
@@ -224,7 +279,7 @@ class CostModel:
                 self.hardware.shared_mem_per_block * self.hardware.smem_soft_ratio,
                 1e-9,
             )
-            geometry_penalty = self._geometry_penalty(preferred_threads, chosen_threads)
+            geometry_penalty = self._geometry_penalty(preferred_threads, chosen_threads, node_work_weights)
             icache_ratio = instruction_count / max(self.hardware.icache_inst_limit, 1e-9)
             weights = self.hardware.penalty_weights
             penalty_multiplier += (
@@ -237,7 +292,7 @@ class CostModel:
         total_latency_ms = roofline_s * penalty_multiplier * 1e3
         return GroupEvaluation(
             nodes=ordered_nodes,
-            dominant_pattern=dominant.value,
+            dominant_pattern=dominant_pattern,
             feasible=True,
             total_latency_ms=total_latency_ms,
             roofline_latency_ms=roofline_s * 1e3,
@@ -253,20 +308,26 @@ class CostModel:
             external_output_bytes=external_output_bytes,
             weight_bytes=weight_bytes,
             eliminated_internal_bytes=eliminated_internal_bytes,
-            fusion_hints=hints,
+            fusion_hints=list(fusion_hints),
             reasons=[],
         )
 
     @staticmethod
-    def _geometry_penalty(preferred_threads: list[int], chosen_threads: int) -> float:
+    def _geometry_penalty(
+        preferred_threads: list[int],
+        chosen_threads: int,
+        node_work_weights: list[float] | None = None,
+    ) -> float:
         if not preferred_threads or chosen_threads <= 0:
             return 0.0
-        penalties = []
-        for preferred in preferred_threads:
+        weights = node_work_weights or [1.0] * len(preferred_threads)
+        total_weight = sum(max(weight, 1e-9) for weight in weights)
+        penalty = 0.0
+        for preferred, weight in zip(preferred_threads, weights):
             high = max(preferred, chosen_threads)
             low = max(min(preferred, chosen_threads), 1)
-            penalties.append((high - low) / high)
-        return sum(penalties) / len(penalties)
+            penalty += ((high - low) / high) * max(weight, 1e-9)
+        return penalty / max(total_weight, 1e-9)
 
     @staticmethod
     def _estimate_peak_live_tile_bytes(
