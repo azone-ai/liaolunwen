@@ -1,0 +1,13 @@
+{
+  "name": "paper_experiment_template",
+  "runs": [
+    {
+      "onnx_model": "model/resnet50-v2-7.onnx",
+      "hardware": "configs/hardware/generic_gpu.json",
+      "methods": ["none", "dp_paper", "hw_aware"],
+      "export_method": "hw_aware",
+      "verify_numerical": true,
+      "benchmark_onnxruntime": true
+    }
+  ]
+}

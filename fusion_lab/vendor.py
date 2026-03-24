@@ -1,3 +1,8 @@
+"""Vendored dependency import helpers.
+
+This file centralizes loading packages from `.vendor/` so the rest of the project does not need to know where optional dependencies are installed.
+"""
+
 from __future__ import annotations
 
 import os
@@ -19,3 +24,17 @@ def import_onnx():
     import onnx  # type: ignore
 
     return onnx
+
+
+def import_numpy():
+    ensure_vendor_path()
+    import numpy  # type: ignore
+
+    return numpy
+
+
+def import_onnxruntime():
+    ensure_vendor_path()
+    import onnxruntime  # type: ignore
+
+    return onnxruntime

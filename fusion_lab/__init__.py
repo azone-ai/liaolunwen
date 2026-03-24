@@ -1,4 +1,4 @@
-"""Hardware-aware operator fusion experiment framework."""
+"""Hardware-aware operator fusion framework with separated core, workflow and research utilities."""
 
 from .cost_model import CostModel
 from .graph import GraphModel

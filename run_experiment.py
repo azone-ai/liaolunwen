@@ -1,3 +1,8 @@
+"""Convenience launcher for local experiments.
+
+Use this file for quick local runs. For automation or scripts, prefer `python -m fusion_lab.cli ...`.
+"""
+
 from __future__ import annotations
 
 import sys

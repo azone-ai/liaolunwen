@@ -1,3 +1,8 @@
+"""Shared enums for mapping patterns and fusion decisions.
+
+Use this file when you need new semantic labels that are reused across rules, search and reporting.
+"""
+
 from __future__ import annotations
 
 from enum import Enum

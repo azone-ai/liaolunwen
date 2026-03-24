@@ -1,3 +1,8 @@
+"""Operator metadata estimation helpers.
+
+This file maps operators to patterns and estimates FLOPs, register pressure, instruction count and preferred launch geometry.
+"""
+
 from __future__ import annotations
 
 from typing import Any

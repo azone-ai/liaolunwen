@@ -1,3 +1,8 @@
+"""Regression tests for reusable fusion-core behavior.
+
+These tests protect mapping classification, legality pruning and high-level search expectations.
+"""
+
 from __future__ import annotations
 
 from pathlib import Path

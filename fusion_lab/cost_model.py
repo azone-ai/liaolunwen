@@ -1,3 +1,8 @@
+"""Hardware-aware cost model.
+
+This file estimates block latency, occupancy and resource pressure. It is part of the reusable core and should stay experiment-agnostic.
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field

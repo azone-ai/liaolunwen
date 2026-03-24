@@ -1,3 +1,8 @@
+"""Fusion legality and dominant-pattern rules.
+
+This file defines which producer-consumer pattern pairs can fuse and which cases require profiling-style evaluation.
+"""
+
 from __future__ import annotations
 
 from .enums import FusionDecision, MappingType

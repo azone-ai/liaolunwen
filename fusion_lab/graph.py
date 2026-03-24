@@ -1,3 +1,8 @@
+"""Internal graph data model.
+
+This file owns graph loading, topology helpers and group boundary analysis. It is one of the safest places to extend input graph metadata.
+"""
+
 from __future__ import annotations
 
 from collections import deque

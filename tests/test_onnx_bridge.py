@@ -1,3 +1,8 @@
+"""Regression tests for ONNX import/export behavior.
+
+These tests verify that ONNX models can be imported into the internal graph and exported back after fusion.
+"""
+
 from __future__ import annotations
 
 from pathlib import Path

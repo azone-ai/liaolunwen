@@ -1,3 +1,8 @@
+"""Fusion search algorithms.
+
+This file contains single-op baselines, greedy fusion and DP-based fusion search, plus plan/result structures used by reporting.
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass

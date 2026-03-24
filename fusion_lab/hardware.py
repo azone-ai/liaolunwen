@@ -1,3 +1,8 @@
+"""Hardware profile abstraction.
+
+This file defines the target-device parameters consumed by the cost model. New hardware knobs should be added here first.
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field

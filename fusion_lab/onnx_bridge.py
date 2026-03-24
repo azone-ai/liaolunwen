@@ -1,3 +1,8 @@
+"""ONNX import/export bridge.
+
+This file translates ONNX graphs into the internal graph model and exports fused plans back to ONNX. Modify it when adding ONNX coverage, not when changing fusion search logic.
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
