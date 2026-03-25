@@ -172,24 +172,20 @@ def benchmark_with_onnxruntime(
     repeat_runs: int = 50,
     providers: list[str] | None = None,
 ) -> BenchmarkComparison:
-    ort = _import_onnxruntime()
-    np = import_numpy()
-    requested_providers = list(providers) if providers else ["CPUExecutionProvider"]
-    selected_providers = _select_providers(ort, requested_providers)
-
-    original_session = ort.InferenceSession(os.fspath(original_model), providers=selected_providers)
-    fused_session = ort.InferenceSession(os.fspath(fused_model), providers=selected_providers)
-    output_names_original = [item.name for item in original_session.get_outputs()]
-    output_names_fused = [item.name for item in fused_session.get_outputs()]
-
-    for _ in range(max(warmup_runs, 0)):
-        original_session.run(output_names_original, inputs)
-        fused_session.run(output_names_fused, inputs)
-
-    original_timings = _measure_session_runs(original_session, output_names_original, inputs, repeat_runs)
-    fused_timings = _measure_session_runs(fused_session, output_names_fused, inputs, repeat_runs)
-    original_stats = _summarize_timings(original_timings, np)
-    fused_stats = _summarize_timings(fused_timings, np)
+    original_stats, selected_providers = benchmark_model_with_onnxruntime(
+        original_model,
+        inputs,
+        warmup_runs=warmup_runs,
+        repeat_runs=repeat_runs,
+        providers=providers,
+    )
+    fused_stats, _ = benchmark_model_with_onnxruntime(
+        fused_model,
+        inputs,
+        warmup_runs=warmup_runs,
+        repeat_runs=repeat_runs,
+        providers=selected_providers,
+    )
     speedup = original_stats.mean_ms / fused_stats.mean_ms if fused_stats.mean_ms > 0 else float("inf")
 
     return BenchmarkComparison(
@@ -202,6 +198,28 @@ def benchmark_with_onnxruntime(
         fused=fused_stats,
         speedup=speedup,
     )
+
+
+def benchmark_model_with_onnxruntime(
+    model_path: str | Path,
+    inputs: dict[str, Any],
+    warmup_runs: int = 10,
+    repeat_runs: int = 50,
+    providers: list[str] | None = None,
+) -> tuple[BenchmarkStats, list[str]]:
+    ort = _import_onnxruntime()
+    np = import_numpy()
+    requested_providers = list(providers) if providers else ["CPUExecutionProvider"]
+    selected_providers = _select_providers(ort, requested_providers)
+
+    session = ort.InferenceSession(os.fspath(model_path), providers=selected_providers)
+    output_names = [item.name for item in session.get_outputs()]
+
+    for _ in range(max(warmup_runs, 0)):
+        session.run(output_names, inputs)
+
+    timings = _measure_session_runs(session, output_names, inputs, repeat_runs)
+    return _summarize_timings(timings, np), selected_providers
 
 
 def verify_models(
@@ -279,6 +297,17 @@ def verify_models(
         max_abs_diff=max_abs_diff,
         mean_abs_diff=mean_abs_diff,
     )
+
+
+def run_model_with_onnxruntime(
+    model_path: str | Path,
+    inputs: dict[str, Any],
+    providers: list[str] | None = None,
+) -> tuple[list[Any], list[str]]:
+    ort = _import_onnxruntime()
+    selected_providers = _select_providers(ort, list(providers) if providers else ["CPUExecutionProvider"])
+    output_map = _run_ort_model(model_path, inputs, selected_providers)
+    return [output_map[name] for name in output_map], selected_providers
 
 
 def write_benchmark_report(result: BenchmarkComparison, output_path: str | Path) -> Path:

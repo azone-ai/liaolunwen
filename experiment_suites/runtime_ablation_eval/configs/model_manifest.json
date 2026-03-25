@@ -1,0 +1,50 @@
+{
+  "hardware_path": "configs/hardware/generic_gpu.json",
+  "max_depth": 4,
+  "methods": [
+    "none",
+    "greedy",
+    "dp_paper",
+    "hw_no_thread_search",
+    "hw_aware"
+  ],
+  "benchmark": {
+    "warmup_runs": 10,
+    "repeat_runs": 30,
+    "seed": 0,
+    "providers": [
+      "CPUExecutionProvider"
+    ]
+  },
+  "torch_backend": {
+    "enabled": true,
+    "device": "cuda",
+    "backend": "trace",
+    "compile_model": true,
+    "warmup_runs": 10,
+    "repeat_runs": 30,
+    "atol": 1e-4,
+    "rtol": 1e-4
+  },
+  "runtime_methods": [
+    "none",
+    "dp_paper",
+    "hw_no_thread_search",
+    "hw_aware"
+  ],
+  "verification": {
+    "backend": "onnxruntime",
+    "atol": 1e-5,
+    "rtol": 1e-5
+  },
+  "models": [
+    {
+      "name": "resnet50",
+      "path": "model/resnet50-v2-7.onnx"
+    },
+    {
+      "name": "vgg16",
+      "path": "model/vgg16-12.onnx"
+    }
+  ]
+}

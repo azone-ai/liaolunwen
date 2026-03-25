@@ -8,6 +8,7 @@ from __future__ import annotations
 import csv
 import json
 from pathlib import Path
+from time import perf_counter
 from typing import Iterable
 
 from ..cost_model import CostModel
@@ -17,6 +18,7 @@ from ..search import PlanResult, greedy_merge_layers, optimize_layers_dp, single
 
 
 DEFAULT_METHODS = ("none", "greedy", "dp_paper", "hw_aware")
+ALL_METHODS = DEFAULT_METHODS + ("hw_no_thread_search",)
 
 
 def run_methods(
@@ -27,47 +29,50 @@ def run_methods(
 ) -> list[PlanResult]:
     results: list[PlanResult] = []
     for method in methods:
+        start_time = perf_counter()
         if method == "none":
-            results.append(
-                single_layer_plan(
-                    graph,
-                    CostModel(hardware, enable_soft_penalties=False),
-                    method="none",
-                    hardware_name=hardware.name,
-                )
+            result = single_layer_plan(
+                graph,
+                CostModel(hardware, enable_soft_penalties=False),
+                method="none",
+                hardware_name=hardware.name,
             )
         elif method == "greedy":
-            results.append(
-                greedy_merge_layers(
-                    graph,
-                    CostModel(hardware, enable_soft_penalties=False),
-                    max_depth=max_depth,
-                    method="greedy",
-                    hardware_name=hardware.name,
-                )
+            result = greedy_merge_layers(
+                graph,
+                CostModel(hardware, enable_soft_penalties=False),
+                max_depth=max_depth,
+                method="greedy",
+                hardware_name=hardware.name,
             )
         elif method == "dp_paper":
-            results.append(
-                optimize_layers_dp(
-                    graph,
-                    CostModel(hardware, enable_soft_penalties=False),
-                    max_depth=max_depth,
-                    method="dp_paper",
-                    hardware_name=hardware.name,
-                )
+            result = optimize_layers_dp(
+                graph,
+                CostModel(hardware, enable_soft_penalties=False),
+                max_depth=max_depth,
+                method="dp_paper",
+                hardware_name=hardware.name,
             )
         elif method == "hw_aware":
-            results.append(
-                optimize_layers_dp(
-                    graph,
-                    CostModel(hardware, enable_soft_penalties=True),
-                    max_depth=max_depth,
-                    method="hw_aware",
-                    hardware_name=hardware.name,
-                )
+            result = optimize_layers_dp(
+                graph,
+                CostModel(hardware, enable_soft_penalties=True),
+                max_depth=max_depth,
+                method="hw_aware",
+                hardware_name=hardware.name,
+            )
+        elif method == "hw_no_thread_search":
+            result = optimize_layers_dp(
+                graph,
+                CostModel(hardware, enable_soft_penalties=True, search_supported_threads=False),
+                max_depth=max_depth,
+                method="hw_no_thread_search",
+                hardware_name=hardware.name,
             )
         else:
             raise ValueError(f"Unsupported method '{method}'.")
+        result.search_time_ms = (perf_counter() - start_time) * 1000.0
+        results.append(result)
     return results
 
 
@@ -119,6 +124,13 @@ def write_reports(results: list[PlanResult], out_dir: str | Path, with_plots: bo
                 "memory_reduction_vs_none": memory_reduction,
                 "avg_occupancy": result.avg_occupancy,
                 "avg_penalty_multiplier": result.avg_penalty_multiplier,
+                "avg_registers_per_thread": result.avg_registers_per_thread,
+                "max_registers_per_thread": result.max_registers_per_thread,
+                "avg_shared_mem_bytes": result.avg_shared_mem_bytes,
+                "max_shared_mem_bytes": result.max_shared_mem_bytes,
+                "avg_threads_per_block": result.avg_threads_per_block,
+                "max_threads_per_block": result.max_threads_per_block,
+                "search_time_ms": result.search_time_ms,
             }
         )
 
@@ -133,8 +145,8 @@ def write_reports(results: list[PlanResult], out_dir: str | Path, with_plots: bo
     markdown_lines = [
         f"# {results[0].graph_name} on {results[0].hardware_name}",
         "",
-        "| Method | Feasible | Latency (ms) | Speedup | Kernels | Kernel Red. | Memory (MiB) | Saved Internal (MiB) | Avg Occ. |",
-        "| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
+        "| Method | Feasible | Latency (ms) | Search Time (ms) | Speedup | Kernels | Kernel Red. | Memory (MiB) | Saved Internal (MiB) | Avg Occ. |",
+        "| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
     ]
     for row in summary_rows:
         speedup = "-" if row["speedup_vs_none"] is None else f"{row['speedup_vs_none']:.3f}"
@@ -143,7 +155,7 @@ def write_reports(results: list[PlanResult], out_dir: str | Path, with_plots: bo
         memory_mib = _bytes_to_mib(row["total_memory_bytes"])
         saved_mib = _bytes_to_mib(row["total_eliminated_internal_bytes"])
         markdown_lines.append(
-            f"| {row['method']} | {row['feasible']} | {latency} | {speedup} | {row['kernel_count']} | {kernel_reduction} | {memory_mib:.3f} | {saved_mib:.3f} | {row['avg_occupancy']:.3f} |"
+            f"| {row['method']} | {row['feasible']} | {latency} | {row['search_time_ms']:.3f} | {speedup} | {row['kernel_count']} | {kernel_reduction} | {memory_mib:.3f} | {saved_mib:.3f} | {row['avg_occupancy']:.3f} |"
         )
 
     markdown_lines.extend(
@@ -151,6 +163,7 @@ def write_reports(results: list[PlanResult], out_dir: str | Path, with_plots: bo
             "",
             "## Notes",
             "",
+            "- `Search Time (ms)` is the measured wall-clock search and plan-construction time for one method on the current machine.",
             "- `Memory (MiB)` is the estimated external traffic used by the cost model: inputs + outputs + weights.",
             "- `Saved Internal (MiB)` is the estimated intermediate output traffic eliminated by fusion.",
             "- `Kernel Red.` is measured against the `none` baseline.",
@@ -158,6 +171,47 @@ def write_reports(results: list[PlanResult], out_dir: str | Path, with_plots: bo
     )
     with open(output_dir / "summary.md", "w", encoding="utf-8") as handle:
         handle.write("\n".join(markdown_lines))
+
+    hardware_rows = [
+        {
+            "method": row["method"],
+            "feasible": row["feasible"],
+            "avg_occupancy": row["avg_occupancy"],
+            "avg_registers_per_thread": row["avg_registers_per_thread"],
+            "max_registers_per_thread": row["max_registers_per_thread"],
+            "avg_shared_mem_kib": row["avg_shared_mem_bytes"] / 1024.0,
+            "max_shared_mem_kib": row["max_shared_mem_bytes"] / 1024.0,
+            "avg_threads_per_block": row["avg_threads_per_block"],
+            "max_threads_per_block": row["max_threads_per_block"],
+            "avg_penalty_multiplier": row["avg_penalty_multiplier"],
+        }
+        for row in summary_rows
+    ]
+    with open(output_dir / "hardware_analysis.json", "w", encoding="utf-8") as handle:
+        json.dump(hardware_rows, handle, indent=2, ensure_ascii=False)
+
+    hardware_markdown_lines = [
+        f"# Hardware Analysis: {results[0].graph_name} on {results[0].hardware_name}",
+        "",
+        "| Method | Feasible | Avg Occ. | Avg Reg/Thr | Max Reg/Thr | Avg SMem/Block (KiB) | Max SMem/Block (KiB) | Avg Threads/Block | Max Threads/Block | Avg Penalty |",
+        "| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
+    ]
+    for row in hardware_rows:
+        hardware_markdown_lines.append(
+            f"| {row['method']} | {row['feasible']} | {row['avg_occupancy']:.3f} | {row['avg_registers_per_thread']:.2f} | {row['max_registers_per_thread']} | {row['avg_shared_mem_kib']:.3f} | {row['max_shared_mem_kib']:.3f} | {row['avg_threads_per_block']:.2f} | {row['max_threads_per_block']} | {row['avg_penalty_multiplier']:.4f} |"
+        )
+    hardware_markdown_lines.extend(
+        [
+            "",
+            "## Notes",
+            "",
+            "- `Avg` metrics are latency-weighted averages across fused blocks in the current plan.",
+            "- Shared memory metrics are reported in KiB per block.",
+            "- `Avg Penalty` reflects the average soft-penalty multiplier under the current cost model.",
+        ]
+    )
+    with open(output_dir / "hardware_analysis.md", "w", encoding="utf-8") as handle:
+        handle.write("\n".join(hardware_markdown_lines))
 
     if with_plots:
         _write_plot(summary_rows, output_dir)

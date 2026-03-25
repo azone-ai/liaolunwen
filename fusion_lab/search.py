@@ -120,6 +120,13 @@ class PlanResult:
     total_eliminated_internal_bytes: int
     avg_occupancy: float
     avg_penalty_multiplier: float
+    avg_registers_per_thread: float
+    max_registers_per_thread: int
+    avg_shared_mem_bytes: float
+    max_shared_mem_bytes: int
+    avg_threads_per_block: float
+    max_threads_per_block: int
+    search_time_ms: float = 0.0
     feasible: bool = True
 
     def to_dict(self) -> dict:
@@ -141,6 +148,13 @@ class PlanResult:
             "total_eliminated_internal_bytes": self.total_eliminated_internal_bytes,
             "avg_occupancy": self.avg_occupancy,
             "avg_penalty_multiplier": self.avg_penalty_multiplier,
+            "avg_registers_per_thread": self.avg_registers_per_thread,
+            "max_registers_per_thread": self.max_registers_per_thread,
+            "avg_shared_mem_bytes": self.avg_shared_mem_bytes,
+            "max_shared_mem_bytes": self.max_shared_mem_bytes,
+            "avg_threads_per_block": self.avg_threads_per_block,
+            "max_threads_per_block": self.max_threads_per_block,
+            "search_time_ms": self.search_time_ms,
             "feasible": self.feasible,
         }
 
@@ -220,12 +234,25 @@ def build_plan_result(
     if total_latency > 0:
         avg_occupancy = sum(block.occupancy * block.cost_ms for block in blocks) / total_latency
         avg_penalty_multiplier = sum(block.penalty_multiplier * block.cost_ms for block in blocks) / total_latency
+        avg_registers_per_thread = sum(block.registers_per_thread * block.cost_ms for block in blocks) / total_latency
+        avg_shared_mem_bytes = sum(block.shared_mem_bytes * block.cost_ms for block in blocks) / total_latency
+        avg_threads_per_block = sum(block.threads_per_block * block.cost_ms for block in blocks) / total_latency
     elif blocks:
         avg_occupancy = sum(block.occupancy for block in blocks) / len(blocks)
         avg_penalty_multiplier = sum(block.penalty_multiplier for block in blocks) / len(blocks)
+        avg_registers_per_thread = sum(block.registers_per_thread for block in blocks) / len(blocks)
+        avg_shared_mem_bytes = sum(block.shared_mem_bytes for block in blocks) / len(blocks)
+        avg_threads_per_block = sum(block.threads_per_block for block in blocks) / len(blocks)
     else:
         avg_occupancy = 0.0
         avg_penalty_multiplier = 0.0
+        avg_registers_per_thread = 0.0
+        avg_shared_mem_bytes = 0.0
+        avg_threads_per_block = 0.0
+
+    max_registers_per_thread = max((block.registers_per_thread for block in blocks), default=0)
+    max_shared_mem_bytes = max((block.shared_mem_bytes for block in blocks), default=0)
+    max_threads_per_block = max((block.threads_per_block for block in blocks), default=0)
 
     return PlanResult(
         method=method,
@@ -245,6 +272,12 @@ def build_plan_result(
         total_eliminated_internal_bytes=total_eliminated_internal_bytes,
         avg_occupancy=avg_occupancy,
         avg_penalty_multiplier=avg_penalty_multiplier,
+        avg_registers_per_thread=avg_registers_per_thread,
+        max_registers_per_thread=max_registers_per_thread,
+        avg_shared_mem_bytes=avg_shared_mem_bytes,
+        max_shared_mem_bytes=max_shared_mem_bytes,
+        avg_threads_per_block=avg_threads_per_block,
+        max_threads_per_block=max_threads_per_block,
         feasible=feasible,
     )
 
@@ -358,6 +391,12 @@ def optimize_layers_dp(
             total_eliminated_internal_bytes=0,
             avg_occupancy=0.0,
             avg_penalty_multiplier=0.0,
+            avg_registers_per_thread=0.0,
+            max_registers_per_thread=0,
+            avg_shared_mem_bytes=0.0,
+            max_shared_mem_bytes=0,
+            avg_threads_per_block=0.0,
+            max_threads_per_block=0,
             feasible=False,
         )
 

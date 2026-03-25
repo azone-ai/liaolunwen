@@ -75,9 +75,15 @@ class GroupEvaluation:
 
 
 class CostModel:
-    def __init__(self, hardware: HardwareProfile, enable_soft_penalties: bool = True) -> None:
+    def __init__(
+        self,
+        hardware: HardwareProfile,
+        enable_soft_penalties: bool = True,
+        search_supported_threads: bool = True,
+    ) -> None:
         self.hardware = hardware
         self.enable_soft_penalties = enable_soft_penalties
+        self.search_supported_threads = search_supported_threads
 
     def evaluate_group(self, graph: GraphModel, node_names: Iterable[str]) -> GroupEvaluation:
         ordered_nodes = sorted(set(node_names), key=graph.topo_index)
@@ -143,12 +149,15 @@ class CostModel:
         eliminated_internal_bytes = sum(graph.nodes[name].output_bytes for name in internal_only_outputs)
         memory_bytes = external_input_bytes + external_output_bytes + weight_bytes
 
-        candidate_threads = [
-            threads
-            for threads in self.hardware.supported_threads
-            if threads <= self.hardware.max_threads_per_block
-        ]
-        if not candidate_threads:
+        if self.search_supported_threads:
+            candidate_threads = [
+                threads
+                for threads in self.hardware.supported_threads
+                if threads <= self.hardware.max_threads_per_block
+            ]
+            if not candidate_threads:
+                candidate_threads = [min(min(preferred_threads), self.hardware.max_threads_per_block)]
+        else:
             candidate_threads = [min(min(preferred_threads), self.hardware.max_threads_per_block)]
 
         evaluations = [

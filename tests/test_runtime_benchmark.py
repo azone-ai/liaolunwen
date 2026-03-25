@@ -37,6 +37,7 @@ def _build_add_relu_model(path: Path) -> None:
     relu = helper.make_node('Relu', ['add_out'], ['y'], name='relu')
     graph = helper.make_graph([add, relu], 'add_relu_graph', [x], [y], initializer=[bias])
     model = helper.make_model(graph, opset_imports=[helper.make_operatorsetid('', 18)])
+    model.ir_version = min(model.ir_version, 11)
     onnx.checker.check_model(model)
     onnx.save(model, path)
 

@@ -9,6 +9,7 @@ from pathlib import Path
 import unittest
 
 from fusion_lab.cost_model import CostModel
+from fusion_lab.experiments import run_methods
 from fusion_lab.graph import GraphModel
 from fusion_lab.hardware import HardwareProfile
 from fusion_lab.ops import infer_mapping_type
@@ -91,7 +92,27 @@ class FusionPipelineTests(unittest.TestCase):
 
         self.assertTrue(none_plan.feasible)
         self.assertTrue(hw_plan.feasible)
+        self.assertGreaterEqual(none_plan.search_time_ms, 0.0)
+        self.assertGreaterEqual(hw_plan.search_time_ms, 0.0)
+        self.assertGreaterEqual(hw_plan.avg_registers_per_thread, 0.0)
+        self.assertGreaterEqual(hw_plan.avg_shared_mem_bytes, 0.0)
         self.assertLessEqual(hw_plan.estimated_latency_ms, none_plan.estimated_latency_ms)
+
+    def test_thread_search_ablation_runs(self) -> None:
+        graph = GraphModel.from_json_file(ROOT / "configs" / "graphs" / "residual_block.json")
+        hardware = HardwareProfile.from_json_file(ROOT / "configs" / "hardware" / "generic_gpu.json")
+
+        results = run_methods(
+            graph,
+            hardware,
+            methods=["hw_no_thread_search"],
+            max_depth=4,
+        )
+
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0].method, "hw_no_thread_search")
+        self.assertTrue(results[0].feasible)
+        self.assertGreaterEqual(results[0].search_time_ms, 0.0)
 
 
 if __name__ == "__main__":

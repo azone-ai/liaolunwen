@@ -9,7 +9,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from .research.experiment_runner import DEFAULT_METHODS
+from .research.experiment_runner import ALL_METHODS, DEFAULT_METHODS
 from .workflow.pipeline import run_all_sample_workflow, run_graph_workflow, run_onnx_workflow
 
 
@@ -23,7 +23,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--methods",
         nargs="+",
         default=list(DEFAULT_METHODS),
-        choices=list(DEFAULT_METHODS),
+        choices=list(ALL_METHODS),
         help="Methods to run.",
     )
     parser.add_argument("--max-depth", type=int, default=4, help="Maximum consecutive layer span for DP.")
@@ -31,7 +31,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--export-method",
         default="hw_aware",
-        choices=list(DEFAULT_METHODS),
+        choices=list(ALL_METHODS),
         help="Method whose plan should be exported as fused ONNX.",
     )
     parser.add_argument(

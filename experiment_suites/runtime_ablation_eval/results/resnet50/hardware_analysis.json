@@ -1,0 +1,62 @@
+[
+  {
+    "method": "none",
+    "feasible": true,
+    "avg_occupancy": 0.9266698370379862,
+    "avg_registers_per_thread": 25.127565879428484,
+    "max_registers_per_thread": 49,
+    "avg_shared_mem_kib": 0.0,
+    "max_shared_mem_kib": 0.0,
+    "avg_threads_per_block": 128.00000000000017,
+    "max_threads_per_block": 128,
+    "avg_penalty_multiplier": 1.0000000000000013
+  },
+  {
+    "method": "greedy",
+    "feasible": true,
+    "avg_occupancy": 0.6395578494049106,
+    "avg_registers_per_thread": 49.13702270370448,
+    "max_registers_per_thread": 72,
+    "avg_shared_mem_kib": 2.5011696594101243,
+    "max_shared_mem_kib": 4.5,
+    "avg_threads_per_block": 118.16845353197502,
+    "max_threads_per_block": 128,
+    "avg_penalty_multiplier": 0.9999999999999997
+  },
+  {
+    "method": "dp_paper",
+    "feasible": true,
+    "avg_occupancy": 0.6012021769179956,
+    "avg_registers_per_thread": 52.165803362221205,
+    "max_registers_per_thread": 72,
+    "avg_shared_mem_kib": 3.552161320938243,
+    "max_shared_mem_kib": 4.5,
+    "avg_threads_per_block": 116.89647594429857,
+    "max_threads_per_block": 128,
+    "avg_penalty_multiplier": 1.0
+  },
+  {
+    "method": "hw_no_thread_search",
+    "feasible": true,
+    "avg_occupancy": 0.6069466177117863,
+    "avg_registers_per_thread": 51.57054066214657,
+    "max_registers_per_thread": 72,
+    "avg_shared_mem_kib": 3.952155962252157,
+    "max_shared_mem_kib": 4.5,
+    "avg_threads_per_block": 130.57017270390654,
+    "max_threads_per_block": 256,
+    "avg_penalty_multiplier": 1.0004055947581196
+  },
+  {
+    "method": "hw_aware",
+    "feasible": true,
+    "avg_occupancy": 0.6069466177117863,
+    "avg_registers_per_thread": 51.57054066214657,
+    "max_registers_per_thread": 72,
+    "avg_shared_mem_kib": 3.952155962252157,
+    "max_shared_mem_kib": 4.5,
+    "avg_threads_per_block": 130.57017270390654,
+    "max_threads_per_block": 256,
+    "avg_penalty_multiplier": 1.0004055947581196
+  }
+]
