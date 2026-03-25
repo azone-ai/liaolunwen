@@ -114,6 +114,28 @@ class FusionPipelineTests(unittest.TestCase):
         self.assertTrue(results[0].feasible)
         self.assertGreaterEqual(results[0].search_time_ms, 0.0)
 
+    def test_penalty_ablation_methods_run(self) -> None:
+        graph = GraphModel.from_json_file(ROOT / "configs" / "graphs" / "residual_block.json")
+        hardware = HardwareProfile.from_json_file(ROOT / "configs" / "hardware" / "generic_gpu.json")
+
+        methods = [
+            "hw_no_geometry",
+            "hw_no_register",
+            "hw_no_shared_memory",
+            "hw_no_icache",
+        ]
+        results = run_methods(
+            graph,
+            hardware,
+            methods=methods,
+            max_depth=4,
+        )
+
+        self.assertEqual([item.method for item in results], methods)
+        for result in results:
+            self.assertTrue(result.feasible)
+            self.assertGreaterEqual(result.search_time_ms, 0.0)
+
 
 if __name__ == "__main__":
     unittest.main()

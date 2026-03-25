@@ -80,10 +80,17 @@ class CostModel:
         hardware: HardwareProfile,
         enable_soft_penalties: bool = True,
         search_supported_threads: bool = True,
+        penalty_weight_overrides: dict[str, float] | None = None,
     ) -> None:
         self.hardware = hardware
         self.enable_soft_penalties = enable_soft_penalties
         self.search_supported_threads = search_supported_threads
+        overrides = dict(penalty_weight_overrides or {})
+        unknown_keys = sorted(set(overrides) - set(self.hardware.penalty_weights))
+        if unknown_keys:
+            names = ", ".join(unknown_keys)
+            raise ValueError(f"Unknown penalty weight override(s): {names}")
+        self.penalty_weights = {**self.hardware.penalty_weights, **overrides}
 
     def evaluate_group(self, graph: GraphModel, node_names: Iterable[str]) -> GroupEvaluation:
         ordered_nodes = sorted(set(node_names), key=graph.topo_index)
@@ -295,7 +302,7 @@ class CostModel:
             )
             geometry_penalty = self._geometry_penalty(preferred_threads, chosen_threads, node_work_weights)
             icache_ratio = instruction_count / max(self.hardware.icache_inst_limit, 1e-9)
-            weights = self.hardware.penalty_weights
+            weights = self.penalty_weights
             penalty_multiplier += (
                 weights["register"] * _soft_violation(reg_ratio)
                 + weights["shared_memory"] * _soft_violation(smem_ratio)

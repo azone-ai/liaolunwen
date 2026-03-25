@@ -57,8 +57,8 @@ def _write_markdown(rows: list[dict[str, Any]], title: str, output_path: Path) -
     lines = [
         f"# {title}",
         "",
-        "| Method | Feasible | Est. Latency (ms) | Runtime Mean (ms) | Runtime Speedup | Search Time (ms) | Kernels | Avg Occ. | Avg Reg/Thr | Avg SMem/Block (KiB) | Avg Threads/Block | Allclose | Max Abs Diff |",
-        "| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- | ---: |",
+        "| Model | Method | Feasible | Est. Latency (ms) | Runtime Mean (ms) | Runtime Speedup | Search Time (ms) | Kernels | Avg Occ. | Avg Reg/Thr | Avg SMem/Block (KiB) | Avg Threads/Block | Allclose | Max Abs Diff |",
+        "| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- | ---: |",
     ]
     for row in rows:
         runtime_mean = "-" if row["runtime_mean_ms"] is None else f"{row['runtime_mean_ms']:.4f}"
@@ -66,7 +66,7 @@ def _write_markdown(rows: list[dict[str, Any]], title: str, output_path: Path) -
         max_abs_diff = "-" if row["max_abs_diff"] is None else f"{row['max_abs_diff']:.8f}"
         allclose = "-" if row["allclose"] is None else str(row["allclose"])
         lines.append(
-            f"| {row['method']} | {row['feasible']} | {row['estimated_latency_ms']:.4f} | {runtime_mean} | {runtime_speedup} | {row['search_time_ms']:.3f} | {row['kernel_count']} | {row['avg_occupancy']:.3f} | {row['avg_registers_per_thread']:.2f} | {row['avg_shared_mem_kib']:.3f} | {row['avg_threads_per_block']:.2f} | {allclose} | {max_abs_diff} |"
+            f"| {row['model_name']} | {row['method']} | {row['feasible']} | {row['estimated_latency_ms']:.4f} | {runtime_mean} | {runtime_speedup} | {row['search_time_ms']:.3f} | {row['kernel_count']} | {row['avg_occupancy']:.3f} | {row['avg_registers_per_thread']:.2f} | {row['avg_shared_mem_kib']:.3f} | {row['avg_threads_per_block']:.2f} | {allclose} | {max_abs_diff} |"
         )
     output_path.write_text("\n".join(lines), encoding="utf-8")
 

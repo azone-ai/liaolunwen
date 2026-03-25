@@ -40,6 +40,20 @@ def _numpy_from_initializer(initializer: Any) -> Any:
     return onnx.numpy_helper.to_array(initializer)
 
 
+def _python_value_from_initializer(initializer: Any) -> Any:
+    array = _numpy_from_initializer(initializer)
+    if hasattr(array, "tolist"):
+        value = array.tolist()
+    else:
+        value = array
+    if hasattr(value, "item"):
+        try:
+            return value.item()
+        except Exception:
+            return value
+    return value
+
+
 def _node_attrs(node: Any) -> dict[str, Any]:
     onnx = import_onnx()
     attrs: dict[str, Any] = {}
@@ -110,6 +124,29 @@ def _apply_max_pool2d(
     return F.max_pool2d(x, kernel_shape, stride=strides, padding=padding, ceil_mode=ceil_mode)
 
 
+def _apply_avg_pool2d(
+    x: torch.Tensor,
+    kernel_shape: tuple[int, int],
+    strides: tuple[int, int],
+    pads: tuple[int, int, int, int],
+    ceil_mode: bool,
+    count_include_pad: bool,
+) -> torch.Tensor:
+    if pads != (pads[0], pads[1], pads[0], pads[1]):
+        x = F.pad(x, (pads[1], pads[3], pads[0], pads[2]), value=0.0)
+        padding = (0, 0)
+    else:
+        padding = (pads[0], pads[1])
+    return F.avg_pool2d(
+        x,
+        kernel_shape,
+        stride=strides,
+        padding=padding,
+        ceil_mode=ceil_mode,
+        count_include_pad=count_include_pad,
+    )
+
+
 def _apply_gemm(
     a: torch.Tensor,
     b: torch.Tensor,
@@ -134,9 +171,64 @@ def _apply_gemm(
     return y
 
 
+def _coerce_optional_bound(value: torch.Tensor | float | int | None) -> torch.Tensor | float | None:
+    if value is None:
+        return None
+    if isinstance(value, torch.Tensor):
+        if value.numel() == 0:
+            return None
+        if value.numel() == 1:
+            return float(value.detach().item())
+        return value
+    return float(value)
+
+
+def _apply_clip(
+    x: torch.Tensor,
+    min_value: torch.Tensor | float | int | None = None,
+    max_value: torch.Tensor | float | int | None = None,
+) -> torch.Tensor:
+    min_arg = _coerce_optional_bound(min_value)
+    max_arg = _coerce_optional_bound(max_value)
+    if min_arg is None and max_arg is None:
+        return x
+    return torch.clamp(x, min=min_arg, max=max_arg)
+
+
+def _coerce_axes(axes: torch.Tensor | list[int] | tuple[int, ...] | int | None) -> tuple[int, ...] | None:
+    if axes is None:
+        return None
+    if isinstance(axes, torch.Tensor):
+        if axes.numel() == 0:
+            return ()
+        values = axes.detach().cpu().tolist()
+        if isinstance(values, list):
+            return tuple(int(value) for value in values)
+        return (int(values),)
+    if isinstance(axes, (list, tuple)):
+        return tuple(int(value) for value in axes)
+    return (int(axes),)
+
+
+def _apply_reduce_mean(
+    x: torch.Tensor,
+    axes: torch.Tensor | list[int] | tuple[int, ...] | int | None,
+    keepdim: bool,
+    noop_with_empty_axes: bool,
+) -> torch.Tensor:
+    dims = _coerce_axes(axes)
+    if dims is None:
+        return x if noop_with_empty_axes else torch.mean(x)
+    if len(dims) == 0:
+        return x if noop_with_empty_axes else torch.mean(x)
+    rank = x.dim()
+    normalized_dims = tuple(sorted({dim if dim >= 0 else rank + dim for dim in dims}))
+    return torch.mean(x, dim=normalized_dims, keepdim=keepdim)
+
+
 def _tensor_from_numpy(array: Any, device: torch.device) -> torch.Tensor:
     np = import_numpy()
-    tensor = torch.from_numpy(np.asarray(array))
+    tensor = torch.from_numpy(np.asarray(array).copy())
     if tensor.dtype == torch.float64:
         tensor = tensor.float()
     return tensor.to(device=device)
@@ -285,9 +377,38 @@ def build_torch_plan_module(
             source_lines.append(
                 f"    {output_var} = _apply_max_pool2d({x}, {kernel}, {strides}, {pads}, {ceil_mode})"
             )
+        elif op_type == "AveragePool":
+            x = tensor_expr(non_empty_inputs[0])
+            kernel = tuple(int(v) for v in attrs.get("kernel_shape", [1, 1]))
+            strides = tuple(int(v) for v in attrs.get("strides", kernel))
+            pads = tuple(int(v) for v in attrs.get("pads", [0, 0, 0, 0]))
+            ceil_mode = bool(int(attrs.get("ceil_mode", 0)))
+            count_include_pad = bool(int(attrs.get("count_include_pad", 0)))
+            source_lines.append(
+                f"    {output_var} = _apply_avg_pool2d({x}, {kernel}, {strides}, {pads}, {ceil_mode}, {count_include_pad})"
+            )
         elif op_type == "GlobalAveragePool":
             x = tensor_expr(non_empty_inputs[0])
             source_lines.append(f"    {output_var} = {x}.mean(dim=(-1, -2), keepdim=True)")
+        elif op_type == "Clip":
+            x = tensor_expr(non_empty_inputs[0])
+            min_expr = "None"
+            max_expr = "None"
+            if len(non_empty_inputs) > 1:
+                if non_empty_inputs[1] in initializer_map:
+                    min_expr = repr(_python_value_from_initializer(initializer_map[non_empty_inputs[1]]))
+                else:
+                    min_expr = tensor_expr(non_empty_inputs[1])
+            elif "min" in attrs:
+                min_expr = repr(float(attrs["min"]))
+            if len(non_empty_inputs) > 2:
+                if non_empty_inputs[2] in initializer_map:
+                    max_expr = repr(_python_value_from_initializer(initializer_map[non_empty_inputs[2]]))
+                else:
+                    max_expr = tensor_expr(non_empty_inputs[2])
+            elif "max" in attrs:
+                max_expr = repr(float(attrs["max"]))
+            source_lines.append(f"    {output_var} = _apply_clip({x}, {min_expr}, {max_expr})")
         elif op_type == "Flatten":
             x = tensor_expr(non_empty_inputs[0])
             axis = int(attrs.get("axis", 1))
@@ -317,6 +438,22 @@ def build_torch_plan_module(
         elif op_type == "Dropout":
             x = tensor_expr(non_empty_inputs[0])
             source_lines.append(f"    {output_var} = {x}")
+        elif op_type == "ReduceMean":
+            x = tensor_expr(non_empty_inputs[0])
+            keepdims = bool(int(attrs.get("keepdims", 1)))
+            noop_with_empty_axes = bool(int(attrs.get("noop_with_empty_axes", 0)))
+            if len(non_empty_inputs) > 1:
+                if non_empty_inputs[1] in initializer_map:
+                    axes_expr = repr(_python_value_from_initializer(initializer_map[non_empty_inputs[1]]))
+                else:
+                    axes_expr = tensor_expr(non_empty_inputs[1])
+            elif "axes" in attrs:
+                axes_expr = repr(tuple(int(v) for v in attrs.get("axes", [])))
+            else:
+                axes_expr = "None"
+            source_lines.append(
+                f"    {output_var} = _apply_reduce_mean({x}, {axes_expr}, {keepdims}, {noop_with_empty_axes})"
+            )
         else:
             raise NotImplementedError(f"Unsupported op for torch backend: {op_type}")
 
@@ -334,7 +471,10 @@ def build_torch_plan_module(
         "F": F,
         "_apply_conv2d": _apply_conv2d,
         "_apply_max_pool2d": _apply_max_pool2d,
+        "_apply_avg_pool2d": _apply_avg_pool2d,
         "_apply_gemm": _apply_gemm,
+        "_apply_clip": _apply_clip,
+        "_apply_reduce_mean": _apply_reduce_mean,
         "_resolve_reshape_shape": _resolve_reshape_shape,
     }
     local_ns: dict[str, Any] = {}
@@ -452,9 +592,38 @@ def build_torch_block_module(
             source_lines.append(
                 f"    {output_var} = _apply_max_pool2d({x}, {kernel}, {strides}, {pads}, {ceil_mode})"
             )
+        elif op_type == "AveragePool":
+            x = tensor_expr(non_empty_inputs[0])
+            kernel = tuple(int(v) for v in attrs.get("kernel_shape", [1, 1]))
+            strides = tuple(int(v) for v in attrs.get("strides", kernel))
+            pads = tuple(int(v) for v in attrs.get("pads", [0, 0, 0, 0]))
+            ceil_mode = bool(int(attrs.get("ceil_mode", 0)))
+            count_include_pad = bool(int(attrs.get("count_include_pad", 0)))
+            source_lines.append(
+                f"    {output_var} = _apply_avg_pool2d({x}, {kernel}, {strides}, {pads}, {ceil_mode}, {count_include_pad})"
+            )
         elif op_type == "GlobalAveragePool":
             x = tensor_expr(non_empty_inputs[0])
             source_lines.append(f"    {output_var} = {x}.mean(dim=(-1, -2), keepdim=True)")
+        elif op_type == "Clip":
+            x = tensor_expr(non_empty_inputs[0])
+            min_expr = "None"
+            max_expr = "None"
+            if len(non_empty_inputs) > 1:
+                if non_empty_inputs[1] in initializer_map:
+                    min_expr = repr(_python_value_from_initializer(initializer_map[non_empty_inputs[1]]))
+                else:
+                    min_expr = tensor_expr(non_empty_inputs[1])
+            elif "min" in attrs:
+                min_expr = repr(float(attrs["min"]))
+            if len(non_empty_inputs) > 2:
+                if non_empty_inputs[2] in initializer_map:
+                    max_expr = repr(_python_value_from_initializer(initializer_map[non_empty_inputs[2]]))
+                else:
+                    max_expr = tensor_expr(non_empty_inputs[2])
+            elif "max" in attrs:
+                max_expr = repr(float(attrs["max"]))
+            source_lines.append(f"    {output_var} = _apply_clip({x}, {min_expr}, {max_expr})")
         elif op_type == "Flatten":
             x = tensor_expr(non_empty_inputs[0])
             axis = int(attrs.get("axis", 1))
@@ -484,6 +653,22 @@ def build_torch_block_module(
         elif op_type == "Dropout":
             x = tensor_expr(non_empty_inputs[0])
             source_lines.append(f"    {output_var} = {x}")
+        elif op_type == "ReduceMean":
+            x = tensor_expr(non_empty_inputs[0])
+            keepdims = bool(int(attrs.get("keepdims", 1)))
+            noop_with_empty_axes = bool(int(attrs.get("noop_with_empty_axes", 0)))
+            if len(non_empty_inputs) > 1:
+                if non_empty_inputs[1] in initializer_map:
+                    axes_expr = repr(_python_value_from_initializer(initializer_map[non_empty_inputs[1]]))
+                else:
+                    axes_expr = tensor_expr(non_empty_inputs[1])
+            elif "axes" in attrs:
+                axes_expr = repr(tuple(int(v) for v in attrs.get("axes", [])))
+            else:
+                axes_expr = "None"
+            source_lines.append(
+                f"    {output_var} = _apply_reduce_mean({x}, {axes_expr}, {keepdims}, {noop_with_empty_axes})"
+            )
         else:
             raise NotImplementedError(f"Unsupported op for torch block backend: {op_type}")
 
@@ -500,7 +685,10 @@ def build_torch_block_module(
         "F": F,
         "_apply_conv2d": _apply_conv2d,
         "_apply_max_pool2d": _apply_max_pool2d,
+        "_apply_avg_pool2d": _apply_avg_pool2d,
         "_apply_gemm": _apply_gemm,
+        "_apply_clip": _apply_clip,
+        "_apply_reduce_mean": _apply_reduce_mean,
         "_resolve_reshape_shape": _resolve_reshape_shape,
     }
     local_ns: dict[str, Any] = {}
@@ -744,15 +932,30 @@ def write_torch_backend_report(rows: list[dict[str, Any]], output_path: str | Pa
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(json.dumps(rows, indent=2, ensure_ascii=False), encoding="utf-8")
 
+    include_model = any("model_name" in row for row in rows)
     markdown_lines = [
         "# Torch Plan Backend Benchmark",
         "",
-        "| Method | Mean (ms) | Speedup | Compile (ms) | Search (ms) | Avg Occ. | Avg Reg/Thr | Avg SMem/Block (KiB) | Allclose | Max Abs Diff |",
-        "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- | ---: |",
+        (
+            "| Model | Method | Mean (ms) | Speedup | Compile (ms) | Search (ms) | Avg Occ. | Avg Reg/Thr | Avg SMem/Block (KiB) | Allclose | Max Abs Diff |"
+            if include_model
+            else "| Method | Mean (ms) | Speedup | Compile (ms) | Search (ms) | Avg Occ. | Avg Reg/Thr | Avg SMem/Block (KiB) | Allclose | Max Abs Diff |"
+        ),
+        (
+            "| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- | ---: |"
+            if include_model
+            else "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- | ---: |"
+        ),
     ]
     for row in rows:
-        markdown_lines.append(
-            f"| {row['method']} | {row['runtime_mean_ms']:.4f} | {row['runtime_speedup']:.4f} | {row['compile_time_ms']:.2f} | {row['search_time_ms']:.3f} | {row['avg_occupancy']:.3f} | {row['avg_registers_per_thread']:.2f} | {row['avg_shared_mem_kib']:.3f} | {row['allclose']} | {row['max_abs_diff']:.8f} |"
-        )
+        speedup_text = "-" if row.get("runtime_speedup") is None else f"{row['runtime_speedup']:.4f}"
+        if include_model:
+            markdown_lines.append(
+                f"| {row.get('model_name', '-')} | {row['method']} | {row['runtime_mean_ms']:.4f} | {speedup_text} | {row['compile_time_ms']:.2f} | {row['search_time_ms']:.3f} | {row['avg_occupancy']:.3f} | {row['avg_registers_per_thread']:.2f} | {row['avg_shared_mem_kib']:.3f} | {row['allclose']} | {row['max_abs_diff']:.8f} |"
+            )
+        else:
+            markdown_lines.append(
+                f"| {row['method']} | {row['runtime_mean_ms']:.4f} | {speedup_text} | {row['compile_time_ms']:.2f} | {row['search_time_ms']:.3f} | {row['avg_occupancy']:.3f} | {row['avg_registers_per_thread']:.2f} | {row['avg_shared_mem_kib']:.3f} | {row['allclose']} | {row['max_abs_diff']:.8f} |"
+            )
     output_path.with_suffix(".md").write_text("\n".join(markdown_lines), encoding="utf-8")
     return output_path

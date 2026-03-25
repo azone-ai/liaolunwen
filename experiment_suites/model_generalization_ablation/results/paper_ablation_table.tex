@@ -1,0 +1,42 @@
+\begin{table*}[htbp]
+\centering
+\caption{细粒度消融在真实后端上的结果}
+\label{tab:generalization_ablation}
+\begin{tabular}{l l c c c}
+\hline
+模型 & 方法 & Runtime/ms & Speedup & Search Time/ms \\
+\hline
+ResNet50 & dp\_paper & 6.2551 & 1.3042 & 105.992 \\
+ResNet50 & hw\_no\_thread\_search & 9.1405 & 0.8925 & 64.219 \\
+ResNet50 & hw\_no\_geometry & 10.7271 & 0.7605 & 129.387 \\
+ResNet50 & hw\_no\_register & 9.4179 & 0.8662 & 128.833 \\
+ResNet50 & hw\_no\_shared\_memory & 9.5676 & 0.8527 & 126.530 \\
+ResNet50 & hw\_no\_icache & 9.7532 & 0.8365 & 130.207 \\
+ResNet50 & hw\_aware & 8.8095 & 0.9261 & 84.497 \\
+\hline
+VGG16 & dp\_paper & 4.9551 & 1.1282 & 28.040 \\
+VGG16 & hw\_no\_thread\_search & 5.5987 & 0.9985 & 15.877 \\
+VGG16 & hw\_no\_geometry & 4.9483 & 1.1297 & 28.849 \\
+VGG16 & hw\_no\_register & 4.9494 & 1.1295 & 28.998 \\
+VGG16 & hw\_no\_shared\_memory & 4.9767 & 1.1233 & 22.735 \\
+VGG16 & hw\_no\_icache & 5.0703 & 1.1025 & 22.125 \\
+VGG16 & hw\_aware & 5.0215 & 1.1133 & 22.801 \\
+\hline
+AlexNet & dp\_paper & 2.6266 & 1.0589 & 7.832 \\
+AlexNet & hw\_no\_thread\_search & 2.5293 & 1.0996 & 5.076 \\
+AlexNet & hw\_no\_geometry & 2.4654 & 1.1281 & 10.425 \\
+AlexNet & hw\_no\_register & 2.4962 & 1.1142 & 9.661 \\
+AlexNet & hw\_no\_shared\_memory & 2.4147 & 1.1518 & 10.522 \\
+AlexNet & hw\_no\_icache & 2.4205 & 1.1490 & 9.880 \\
+AlexNet & hw\_aware & 2.4910 & 1.1165 & 10.195 \\
+\hline
+MobileNetV2 & dp\_paper & 6.6897 & 1.2800 & 56.113 \\
+MobileNetV2 & hw\_no\_thread\_search & 6.6987 & 1.2782 & 32.251 \\
+MobileNetV2 & hw\_no\_geometry & 6.5862 & 1.3001 & 67.088 \\
+MobileNetV2 & hw\_no\_register & 6.5647 & 1.3043 & 65.900 \\
+MobileNetV2 & hw\_no\_shared\_memory & 6.7576 & 1.2671 & 67.347 \\
+MobileNetV2 & hw\_no\_icache & 7.5480 & 1.1344 & 65.862 \\
+MobileNetV2 & hw\_aware & 6.6132 & 1.2948 & 65.560 \\
+\hline
+\end{tabular}
+\end{table*}

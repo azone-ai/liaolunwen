@@ -1,0 +1,71 @@
+{
+  "hardware_path": "configs/hardware/generic_gpu.json",
+  "max_depth": 4,
+  "methods": [
+    "none",
+    "greedy",
+    "dp_paper",
+    "hw_no_thread_search",
+    "hw_no_geometry",
+    "hw_no_register",
+    "hw_no_shared_memory",
+    "hw_no_icache",
+    "hw_aware"
+  ],
+  "benchmark": {
+    "warmup_runs": 10,
+    "repeat_runs": 30,
+    "seed": 0,
+    "providers": [
+      "CPUExecutionProvider"
+    ]
+  },
+  "torch_backend": {
+    "enabled": true,
+    "device": "cuda",
+    "backend": "trace",
+    "compile_model": true,
+    "warmup_runs": 10,
+    "repeat_runs": 30,
+    "atol": 0.0001,
+    "rtol": 0.0001
+  },
+  "runtime_methods": [
+    "none",
+    "greedy",
+    "dp_paper",
+    "hw_no_thread_search",
+    "hw_no_geometry",
+    "hw_no_register",
+    "hw_no_shared_memory",
+    "hw_no_icache",
+    "hw_aware"
+  ],
+  "verification": {
+    "backend": "onnxruntime",
+    "atol": 1e-05,
+    "rtol": 1e-05
+  },
+  "models": [
+    {
+      "name": "resnet50",
+      "path": "model/resnet50-v2-7.onnx",
+      "source": "existing"
+    },
+    {
+      "name": "vgg16",
+      "path": "model/vgg16-12.onnx",
+      "source": "existing"
+    },
+    {
+      "name": "alexnet",
+      "path": "outputs/generated_models/alexnet.onnx",
+      "source": "torchvision"
+    },
+    {
+      "name": "mobilenet_v2",
+      "path": "outputs/generated_models/mobilenet_v2.onnx",
+      "source": "torchvision"
+    }
+  ]
+}

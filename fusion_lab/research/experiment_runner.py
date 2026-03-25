@@ -18,7 +18,37 @@ from ..search import PlanResult, greedy_merge_layers, optimize_layers_dp, single
 
 
 DEFAULT_METHODS = ("none", "greedy", "dp_paper", "hw_aware")
-ALL_METHODS = DEFAULT_METHODS + ("hw_no_thread_search",)
+ABLATION_METHODS = (
+    "hw_no_thread_search",
+    "hw_no_geometry",
+    "hw_no_register",
+    "hw_no_shared_memory",
+    "hw_no_icache",
+)
+ALL_METHODS = DEFAULT_METHODS + ABLATION_METHODS
+
+
+def _build_cost_model(hardware: HardwareProfile, method: str) -> CostModel:
+    if method in {"none", "greedy", "dp_paper"}:
+        return CostModel(hardware, enable_soft_penalties=False)
+    if method == "hw_aware":
+        return CostModel(hardware, enable_soft_penalties=True)
+    if method == "hw_no_thread_search":
+        return CostModel(hardware, enable_soft_penalties=True, search_supported_threads=False)
+
+    penalty_override_map = {
+        "hw_no_geometry": {"geometry": 0.0},
+        "hw_no_register": {"register": 0.0},
+        "hw_no_shared_memory": {"shared_memory": 0.0},
+        "hw_no_icache": {"icache": 0.0},
+    }
+    if method in penalty_override_map:
+        return CostModel(
+            hardware,
+            enable_soft_penalties=True,
+            penalty_weight_overrides=penalty_override_map[method],
+        )
+    raise ValueError(f"Unsupported method '{method}'.")
 
 
 def run_methods(
@@ -30,47 +60,30 @@ def run_methods(
     results: list[PlanResult] = []
     for method in methods:
         start_time = perf_counter()
+        cost_model = _build_cost_model(hardware, method)
         if method == "none":
             result = single_layer_plan(
                 graph,
-                CostModel(hardware, enable_soft_penalties=False),
+                cost_model,
                 method="none",
                 hardware_name=hardware.name,
             )
         elif method == "greedy":
             result = greedy_merge_layers(
                 graph,
-                CostModel(hardware, enable_soft_penalties=False),
+                cost_model,
                 max_depth=max_depth,
                 method="greedy",
                 hardware_name=hardware.name,
             )
-        elif method == "dp_paper":
-            result = optimize_layers_dp(
-                graph,
-                CostModel(hardware, enable_soft_penalties=False),
-                max_depth=max_depth,
-                method="dp_paper",
-                hardware_name=hardware.name,
-            )
-        elif method == "hw_aware":
-            result = optimize_layers_dp(
-                graph,
-                CostModel(hardware, enable_soft_penalties=True),
-                max_depth=max_depth,
-                method="hw_aware",
-                hardware_name=hardware.name,
-            )
-        elif method == "hw_no_thread_search":
-            result = optimize_layers_dp(
-                graph,
-                CostModel(hardware, enable_soft_penalties=True, search_supported_threads=False),
-                max_depth=max_depth,
-                method="hw_no_thread_search",
-                hardware_name=hardware.name,
-            )
         else:
-            raise ValueError(f"Unsupported method '{method}'.")
+            result = optimize_layers_dp(
+                graph,
+                cost_model,
+                max_depth=max_depth,
+                method=method,
+                hardware_name=hardware.name,
+            )
         result.search_time_ms = (perf_counter() - start_time) * 1000.0
         results.append(result)
     return results
@@ -232,8 +245,10 @@ def _write_plot(summary_rows: list[dict], output_dir: Path) -> None:
         0.0 if row["estimated_latency_ms"] == float("inf") else row["estimated_latency_ms"]
         for row in summary_rows
     ]
+    palette = ["#7e9fbe", "#7bb274", "#e0a458", "#d35d6e", "#7f7caf", "#5c8d89", "#bc6c25", "#6d597a", "#2a9d8f"]
+    colors = [palette[idx % len(palette)] for idx in range(len(methods))]
     plt.figure(figsize=(8, 4))
-    bars = plt.bar(methods, latencies, color=["#7e9fbe", "#7bb274", "#e0a458", "#d35d6e"])
+    bars = plt.bar(methods, latencies, color=colors)
     plt.ylabel("Estimated Latency (ms)")
     plt.title(f"{summary_rows[0]['graph_name']} on {summary_rows[0]['hardware_name']}")
     for bar, latency in zip(bars, latencies):
