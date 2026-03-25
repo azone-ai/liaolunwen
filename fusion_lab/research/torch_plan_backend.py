@@ -937,12 +937,12 @@ def write_torch_backend_report(rows: list[dict[str, Any]], output_path: str | Pa
         "# Torch Plan Backend Benchmark",
         "",
         (
-            "| Model | Method | Mean (ms) | Speedup | Compile (ms) | Search (ms) | Avg Occ. | Avg Reg/Thr | Avg SMem/Block (KiB) | Allclose | Max Abs Diff |"
+            "| Model | Penalty Profile | Method | Mean (ms) | Speedup | Compile (ms) | Search (ms) | Avg Occ. | Avg Reg/Thr | Avg SMem/Block (KiB) | Allclose | Max Abs Diff |"
             if include_model
             else "| Method | Mean (ms) | Speedup | Compile (ms) | Search (ms) | Avg Occ. | Avg Reg/Thr | Avg SMem/Block (KiB) | Allclose | Max Abs Diff |"
         ),
         (
-            "| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- | ---: |"
+            "| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- | ---: |"
             if include_model
             else "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- | ---: |"
         ),
@@ -951,7 +951,7 @@ def write_torch_backend_report(rows: list[dict[str, Any]], output_path: str | Pa
         speedup_text = "-" if row.get("runtime_speedup") is None else f"{row['runtime_speedup']:.4f}"
         if include_model:
             markdown_lines.append(
-                f"| {row.get('model_name', '-')} | {row['method']} | {row['runtime_mean_ms']:.4f} | {speedup_text} | {row['compile_time_ms']:.2f} | {row['search_time_ms']:.3f} | {row['avg_occupancy']:.3f} | {row['avg_registers_per_thread']:.2f} | {row['avg_shared_mem_kib']:.3f} | {row['allclose']} | {row['max_abs_diff']:.8f} |"
+                f"| {row.get('model_name', '-')} | {row.get('penalty_profile', '-')} | {row['method']} | {row['runtime_mean_ms']:.4f} | {speedup_text} | {row['compile_time_ms']:.2f} | {row['search_time_ms']:.3f} | {row['avg_occupancy']:.3f} | {row['avg_registers_per_thread']:.2f} | {row['avg_shared_mem_kib']:.3f} | {row['allclose']} | {row['max_abs_diff']:.8f} |"
             )
         else:
             markdown_lines.append(

@@ -1,7 +1,7 @@
 {
   "hardware_path": "configs/hardware/generic_gpu.json",
   "max_depth": 4,
-  "penalty_profile": "baseline",
+  "penalty_profile": "auto",
   "methods": [
     "none",
     "greedy",

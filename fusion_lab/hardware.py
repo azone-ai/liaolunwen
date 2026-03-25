@@ -84,6 +84,41 @@ class HardwareProfile:
             data = json.load(handle)
         return cls.from_dict(data)
 
+    def to_dict(self) -> dict:
+        return {
+            "name": self.name,
+            "peak_flops": self.peak_flops,
+            "memory_bandwidth": self.memory_bandwidth,
+            "launch_overhead_us": self.launch_overhead_us,
+            "warp_size": self.warp_size,
+            "max_warps_per_sm": self.max_warps_per_sm,
+            "max_threads_per_block": self.max_threads_per_block,
+            "max_threads_per_sm": self.max_threads_per_sm,
+            "max_blocks_per_sm": self.max_blocks_per_sm,
+            "registers_per_thread_limit": self.registers_per_thread_limit,
+            "registers_per_sm": self.registers_per_sm,
+            "shared_mem_per_block": self.shared_mem_per_block,
+            "shared_mem_per_sm": self.shared_mem_per_sm,
+            "icache_inst_limit": self.icache_inst_limit,
+            "reg_soft_ratio": self.reg_soft_ratio,
+            "smem_soft_ratio": self.smem_soft_ratio,
+            "supported_threads": list(self.supported_threads),
+            "penalty_weights": dict(self.penalty_weights),
+            "base_compute_efficiency": dict(self.base_compute_efficiency),
+            "base_memory_efficiency": dict(self.base_memory_efficiency),
+        }
+
+    def with_overrides(self, **overrides) -> "HardwareProfile":
+        data = self.to_dict()
+        for key, value in overrides.items():
+            if key == "penalty_weights":
+                merged = dict(data.get("penalty_weights", {}))
+                merged.update(dict(value))
+                data["penalty_weights"] = merged
+            else:
+                data[key] = value
+        return HardwareProfile.from_dict(data)
+
     @property
     def launch_overhead_s(self) -> float:
         return self.launch_overhead_us * 1e-6

@@ -15,6 +15,7 @@ if str(ROOT) not in sys.path:
 from fusion_lab.hardware import HardwareProfile
 from fusion_lab.onnx_bridge import export_fused_onnx, load_onnx_model
 from fusion_lab.research.experiment_runner import run_methods, write_reports
+from fusion_lab.research.penalty_calibration import PROFILE_CHOICES, apply_penalty_profile
 from fusion_lab.research.runtime_validation import (
     benchmark_model_with_onnxruntime,
     generate_random_inputs,
@@ -38,6 +39,7 @@ def _load_manifest(path: Path) -> dict[str, Any]:
 def _summary_row(result: Any) -> dict[str, Any]:
     return {
         "method": result.method,
+        "hardware_name": result.hardware_name,
         "estimated_latency_ms": result.estimated_latency_ms,
         "kernel_count": result.kernel_count,
         "search_time_ms": result.search_time_ms,
@@ -57,8 +59,8 @@ def _write_markdown(rows: list[dict[str, Any]], title: str, output_path: Path) -
     lines = [
         f"# {title}",
         "",
-        "| Model | Method | Feasible | Est. Latency (ms) | Runtime Mean (ms) | Runtime Speedup | Search Time (ms) | Kernels | Avg Occ. | Avg Reg/Thr | Avg SMem/Block (KiB) | Avg Threads/Block | Allclose | Max Abs Diff |",
-        "| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- | ---: |",
+        "| Model | Penalty Profile | Method | Feasible | Est. Latency (ms) | Runtime Mean (ms) | Runtime Speedup | Search Time (ms) | Kernels | Avg Occ. | Avg Reg/Thr | Avg SMem/Block (KiB) | Avg Threads/Block | Allclose | Max Abs Diff |",
+        "| --- | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- | ---: |",
     ]
     for row in rows:
         runtime_mean = "-" if row["runtime_mean_ms"] is None else f"{row['runtime_mean_ms']:.4f}"
@@ -66,7 +68,7 @@ def _write_markdown(rows: list[dict[str, Any]], title: str, output_path: Path) -
         max_abs_diff = "-" if row["max_abs_diff"] is None else f"{row['max_abs_diff']:.8f}"
         allclose = "-" if row["allclose"] is None else str(row["allclose"])
         lines.append(
-            f"| {row['model_name']} | {row['method']} | {row['feasible']} | {row['estimated_latency_ms']:.4f} | {runtime_mean} | {runtime_speedup} | {row['search_time_ms']:.3f} | {row['kernel_count']} | {row['avg_occupancy']:.3f} | {row['avg_registers_per_thread']:.2f} | {row['avg_shared_mem_kib']:.3f} | {row['avg_threads_per_block']:.2f} | {allclose} | {max_abs_diff} |"
+            f"| {row['model_name']} | {row.get('penalty_profile', '-')} | {row['method']} | {row['feasible']} | {row['estimated_latency_ms']:.4f} | {runtime_mean} | {runtime_speedup} | {row['search_time_ms']:.3f} | {row['kernel_count']} | {row['avg_occupancy']:.3f} | {row['avg_registers_per_thread']:.2f} | {row['avg_shared_mem_kib']:.3f} | {row['avg_threads_per_block']:.2f} | {allclose} | {max_abs_diff} |"
         )
     output_path.write_text("\n".join(lines), encoding="utf-8")
 
@@ -96,6 +98,7 @@ def run_experiments(manifest_path: Path, out_dir: Path) -> None:
     torch_cfg = manifest.get("torch_backend", {})
     runtime_methods = list(manifest.get("runtime_methods", methods))
     verification_cfg = manifest["verification"]
+    default_penalty_profile = manifest.get("penalty_profile", "baseline")
     aggregate_rows: list[dict[str, Any]] = []
     aggregate_torch_rows: list[dict[str, Any]] = []
 
@@ -106,9 +109,28 @@ def run_experiments(manifest_path: Path, out_dir: Path) -> None:
         model_out_dir.mkdir(parents=True, exist_ok=True)
 
         imported = load_onnx_model(model_path)
-        results = run_methods(imported.graph_model, hardware, methods=methods, max_depth=max_depth)
+        requested_profile = model_cfg.get("penalty_profile", default_penalty_profile)
+        calibrated_hardware, penalty_profile, feature_summary = apply_penalty_profile(
+            hardware,
+            imported.graph_model,
+            requested_profile=requested_profile,
+        )
+        results = run_methods(imported.graph_model, calibrated_hardware, methods=methods, max_depth=max_depth)
         write_reports(results, model_out_dir, with_plots=False)
         result_by_method = {result.method: result for result in results}
+        (model_out_dir / "penalty_profile.json").write_text(
+            json.dumps(
+                {
+                    "requested_profile": requested_profile,
+                    "resolved_profile": penalty_profile,
+                    "available_profiles": list(PROFILE_CHOICES),
+                    "graph_features": feature_summary.to_dict(),
+                },
+                indent=2,
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
 
         inputs, input_specs = generate_random_inputs(
             model_path,
@@ -127,6 +149,7 @@ def run_experiments(manifest_path: Path, out_dir: Path) -> None:
         none_row.update(
             {
                 "model_name": model_name,
+                "penalty_profile": penalty_profile,
                 "runtime_mean_ms": original_stats.mean_ms,
                 "runtime_speedup": 1.0,
                 "runtime_median_ms": original_stats.median_ms,
@@ -166,6 +189,7 @@ def run_experiments(manifest_path: Path, out_dir: Path) -> None:
             row.update(
                 {
                     "model_name": model_name,
+                    "penalty_profile": penalty_profile,
                     "runtime_mean_ms": fused_stats.mean_ms,
                     "runtime_speedup": original_stats.mean_ms / fused_stats.mean_ms if fused_stats.mean_ms > 0 else float("inf"),
                     "runtime_median_ms": fused_stats.median_ms,
@@ -211,6 +235,7 @@ def run_experiments(manifest_path: Path, out_dir: Path) -> None:
                 row.update(
                     {
                         "model_name": model_name,
+                        "penalty_profile": penalty_profile,
                         "runtime_backend": "torch_compile",
                         "torch_backend_mode": compiled_module.mode,
                         "runtime_mean_ms": stats.mean_ms,
